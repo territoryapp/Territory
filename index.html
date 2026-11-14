@@ -23,18 +23,20 @@ body{background:var(--bg);color:var(--tx);padding:12px;display:flex;justify-cont
 .ov{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9;overflow:auto}
 .md{background:var(--cd);border-radius:16px;width:100%;max-width:420px;padding:18px;max-height:100%;overflow:auto}.md h3{margin-bottom:12px;font-size:16px}
 label{display:block;font-size:11px;font-weight:600;color:var(--mu);margin-bottom:10px}
-input,select{display:block;width:100%;margin-top:4px;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font-size:14px}
+input,select,textarea{display:block;width:100%;margin-top:4px;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font-size:14px}
 .gr{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:6px;margin-top:8px}
 .gr button{height:40px;border:1px solid var(--bd);border-radius:8px;background:var(--cd);color:var(--tx);font-weight:700}.gr .dn{background:var(--ok);color:#fff}
 .er{color:#ef4444;font-size:12px;margin:6px 0}.chips span{display:inline-block;font-size:11px;background:var(--bg);padding:4px 8px;border-radius:12px;margin:0 6px 6px 0}
 .nt{background:#dbeafe;color:#1e3a8a;padding:12px 16px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;gap:8px;align-items:center}.nt button{border:0;background:none;font-weight:700;color:inherit}
 .em{text-align:center;color:var(--mu);padding:30px 10px;font-size:13px}.c{text-align:center}.c h2{margin:8px 0}
+.xb{border:0;background:var(--bg);color:var(--tx);width:32px;height:32px;border-radius:16px;font-size:14px;flex:none}
+.nl{max-height:40vh;overflow:auto;margin-bottom:10px}.nt2{background:var(--bg);border-radius:10px;padding:8px 28px 8px 10px;margin-bottom:8px;font-size:13px;position:relative;white-space:pre-wrap}.nt2.me{background:#dbeafe;color:#1e3a8a}.nt2.me .mu{color:#1e40af}.nt2 .xb{position:absolute;top:4px;right:4px;width:24px;height:24px;font-size:11px}
 </style></head><body><div id="app"><p class="em">Cargando…</p></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {getAuth,onAuthStateChanged,signInWithPopup,GoogleAuthProvider,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import {getFirestore,doc,getDoc,setDoc,updateDoc,deleteDoc,addDoc,collection,onSnapshot,writeBatch} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import {getFirestore,doc,getDoc,setDoc,updateDoc,deleteDoc,addDoc,collection,onSnapshot,writeBatch,query,where} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // ====== PEGA AQUÍ LA CONFIGURACIÓN DE TU PROYECTO FIREBASE ======
 const CONFIG={apiKey:"AIzaSyCYWpD9nDCWklJS7WjK3IyO8M5cKlrm1S0",authDomain:"territory-42daa.firebaseapp.com",projectId:"territory-42daa",appId:"1:939260692253:web:58436bbfcab74b4f0c43f4"};
@@ -53,7 +55,7 @@ const P=new URLSearchParams(location.search),invC=P.get('c'),invK=P.get('k');
 
 if(!CONFIG.apiKey){$('#app').innerHTML='<p class="em">Falta pegar la configuración de Firebase en el archivo (busca CONFIG).</p>'}
 const app=CONFIG.apiKey?initializeApp(CONFIG):null,auth=app&&getAuth(app),db=app&&getFirestore(app);
-let S={u:null,ready:false,prof:null,step:'',mode:'new',cong:null,mems:[],terr:[],cyc:[],logs:[],sch:[],notice:'',cap:false,switching:false,tab:'t',openId:null,err:''},ls=false;
+let S={u:null,ready:false,prof:null,step:'',mode:'new',cong:null,mems:[],terr:[],cyc:[],logs:[],sch:[],notes:[],notice:'',cap:false,switching:false,tab:'t',openId:null,err:''},ls=false;
 const isSup=()=>S.prof&&S.prof.role==='super'&&!S.cap;
 const cid=()=>S.prof.cid;
 const dref=(...p)=>doc(db,'congregations',cid(),...p);
@@ -68,8 +70,8 @@ if(auth)onAuthStateChanged(auth,async u=>{
   render();
 });
 
-let unsubs=[],iv;
-function unlisten(){unsubs.forEach(f=>f());unsubs=[];clearInterval(iv);ls=false;S.cong=null;S.mems=[];S.terr=[];S.cyc=[];S.logs=[];S.sch=[];S.err='';S.openId=null;S.tab='t';S.step='';S.cap=false;S.switching=false}
+let unsubs=[],iv,noteView=null;
+function unlisten(){unsubs.forEach(f=>f());unsubs=[];clearInterval(iv);ls=false;S.cong=null;S.mems=[];S.terr=[];S.cyc=[];S.logs=[];S.sch=[];S.notes=[];S.err='';S.openId=null;S.tab='t';S.step='';S.cap=false;S.switching=false}
 function listen(){
   if(ls)return;ls=true;
   const e=x=>{if(!S.u)return;S.err=x.message;render()};
@@ -77,6 +79,8 @@ function listen(){
   const sub=(n,k)=>unsubs.push(onSnapshot(cref(n),s=>{S[k]=s.docs.map(d=>({id:d.id,...d.data()}));render()},e));
   sub('members','mems');sub('territories','terr');sub('cycles','cyc');sub('logs','logs');
   unsubs.push(onSnapshot(cref('schedules'),s=>{S.sch=s.docs.map(d=>({id:d.id,...d.data()}));render();checkDue()},e));iv=setInterval(checkDue,30000);
+  const nq=S.prof.role==='super'?cref('notes'):query(cref('notes'),where('captainId','==',S.u.uid));
+  unsubs.push(onSnapshot(nq,s=>{S.notes=s.docs.map(d=>({id:d.id,...d.data()}));render();if(noteView)noteView()},e));
 }
 
 function modal(title,body,acts){
@@ -186,15 +190,16 @@ function viewT(ct){
     l.append(el('div','t',t.colonia+' #'+t.number),el('div','mu',(t.captainId?'Capitán: '+(capName(t.captainId)||'—'):'Sin asignar')+' • '+t.total+' manzanas'));
     top.append(l,el('span','bg'+(t.captainId?' as':''),t.captainId?'Asignado':'Disponible'));c.append(top);
     if(t.img){const i=el('img','im');i.src=t.img;i.alt='Mapa';c.append(i)}else c.append(el('div','ph','Sin mapa'));
-    c.append(el('p','mu','Avance: '+(t.done||[]).length+' / '+t.total+' manzanas'));
-    const r=el('div','row'),v=el('button','btn sm','👁️ Ver mapa');v.onclick=()=>{S.openId=t.id;render()};r.append(v);
+    const pc=isSup()?(t.done||[]):curOf(t);c.append(el('p','mu','Avance: '+pc.length+' / '+t.total+' manzanas'+(!isSup()&&!same(pc,t.done||[])?' (sin enviar)':'')));
+    const r=el('div','row'),v=el('button','btn sm','👁️ Ver mapa');v.onclick=()=>{S.openId=t.id;render()};r.append(v,nbtn(t));
+    let r2=null;
     if(isSup()){
       const as=el('button','btn sm g','👤'),ed=el('button','btn sm g','✏️'),dl=el('button','btn sm rd','🗑️');
       as.onclick=()=>assign(t);ed.onclick=()=>terrForm(t);
       dl.onclick=()=>modal('¿Eliminar territorio?',el('p','mu',t.colonia+' #'+t.number),[['Cancelar',null,'g'],['Eliminar',()=>deleteDoc(dref('territories',t.id)),'rd']]);
-      r.append(as,ed,dl);
+      r2=el('div','row');r2.append(as,ed,dl);
     }
-    c.append(r);ct.append(c);
+    c.append(r);if(r2)c.append(r2);ct.append(c);
   });
 }
 
@@ -252,40 +257,86 @@ function assign(t){
   modal('Asignar capitán',w,[['Cancelar',null,'g'],['Asignar',()=>updateDoc(dref('territories',t.id),{captainId:s.value})]]);
 }
 
+const curOf=t=>t.draft!==undefined?t.draft:(t.done||[]);
+const same=(a,b)=>a.length===b.length&&a.every((x,i)=>x===b[i]);
+
 function viewMap(){
   const t=S.terr.find(x=>x.id===S.openId);if(!t){S.openId=null;return}
-  const o=el('div','ov'),m=el('div','md'),can=isSup()||t.captainId===S.u.uid;o.id='mm';
-  m.append(el('h3','',t.colonia+' #'+t.number));
+  const o=el('div','ov'),m=el('div','md'),can=isSup()||t.captainId===S.u.uid,cur=curOf(t),dirty=!same(cur,t.done||[]);o.id='mm';
+  const hh=el('div','top'),x=el('button','xb','✕');x.onclick=()=>{S.openId=null;render()};
+  hh.append(el('h3','',t.colonia+' #'+t.number),x);m.append(hh);
   if(t.img){const i=el('img','im');i.src=t.img;i.alt='Mapa';m.append(i)}
   m.append(el('p','mu',can?'Toca una manzana para marcar o desmarcar:':'Solo el capitán asignado puede marcar manzanas.'));
   const g=el('div','gr');
-  for(let i=1;i<=t.total;i++){const b=el('button',(t.done||[]).includes(i)?'dn':'',i);b.onclick=()=>toggle(t,i);g.append(b)}
-  const r=el('div','row'),x=el('button','btn','Cerrar');x.onclick=()=>{S.openId=null;render()};r.append(x);
-  m.append(g);if(can&&(t.done||[]).length===t.total){const sb=el('button','btn','📤 Enviar al superintendente');sb.style.marginTop='12px';sb.onclick=()=>sendCycle(t);m.append(el('p','mu','Marcaste todas las manzanas. Toca Enviar cuando estés listo.'),sb)}m.append(r);o.append(m);document.body.append(o);
-}
-
-async function sendCycle(t){
-  const d=today();
-  try{
-    await addDoc(cref('cycles'),{tid:t.id,tname:t.colonia+' #'+t.number,start:t.start||d,end:d});
-    await updateDoc(dref('territories',t.id),{done:[],start:''});
-    S.openId=null;S.notice='✅ Territorio enviado al superintendente';render();
-  }catch(e){S.err='Error al enviar: '+e.message;render()}
+  for(let i=1;i<=t.total;i++){const b=el('button',cur.includes(i)?'dn':'',i);b.onclick=()=>toggle(t,i);g.append(b)}
+  m.append(g);
+  const r=el('div','row');
+  if(can&&dirty){
+    m.append(el('p','mu',cur.length===t.total?'Marcaste todas las manzanas. Toca Enviar cuando estés listo.':'Tus cambios no se envían al superintendente hasta que toques Enviar.'));
+    const sb=el('button','btn','📤 Enviar');sb.onclick=()=>send(t);r.append(sb);
+  }else{const c=el('button','btn','Cerrar');c.onclick=()=>{S.openId=null;render()};r.append(c)}
+  m.append(r);o.append(m);document.body.append(o);
 }
 
 async function toggle(t,i){
   if(!(isSup()||t.captainId===S.u.uid))return;
-  const done=t.done||[],has=done.includes(i),d=today(),name=t.colonia+' #'+t.number,lr=dref('logs',d+'_'+t.id),tr=dref('territories',t.id);
-  const nd=has?done.filter(x=>x!==i):[...done,i].sort((a,b)=>a-b);
-  try{
-    const s=await getDoc(lr),lg=s.exists()?s.data():{date:d,tid:t.id,tname:name,blocks:[]};
-    const bl=has?lg.blocks.filter(x=>x!==i):[...new Set([...lg.blocks,i])].sort((a,b)=>a-b);
-    if(bl.length)await setDoc(lr,{...lg,blocks:bl});else if(s.exists())await deleteDoc(lr);
-    const start=nd.length?(t.start||d):'';
-    await updateDoc(tr,{done:nd,start});
-  }catch(e){S.err='Error al guardar: '+e.message;render()}
+  const cur=curOf(t),nd=cur.includes(i)?cur.filter(x=>x!==i):[...cur,i].sort((a,b)=>a-b);
+  try{await updateDoc(dref('territories',t.id),{draft:nd})}catch(e){S.err='Error al guardar: '+e.message;render()}
 }
 
+async function send(t){
+  if(!(isSup()||t.captainId===S.u.uid))return;
+  const d=today(),cur=curOf(t),done=t.done||[],add=cur.filter(x=>!done.includes(x)),rem=done.filter(x=>!cur.includes(x)),name=t.colonia+' #'+t.number,lr=dref('logs',d+'_'+t.id),tr=dref('territories',t.id);
+  try{
+    const s=await getDoc(lr),lg=s.exists()?s.data():{date:d,tid:t.id,tname:name,blocks:[]};
+    const bl=[...new Set([...lg.blocks.filter(x=>!rem.includes(x)),...add])].sort((a,b)=>a-b);
+    if(bl.length)await setDoc(lr,{...lg,blocks:bl});else if(s.exists())await deleteDoc(lr);
+    const start=cur.length?(t.start||d):'';
+    if(cur.length===t.total){await addDoc(cref('cycles'),{tid:t.id,tname:name,start,end:d});await updateDoc(tr,{done:[],draft:[],start:''});S.notice='✅ Territorio completado y enviado'}
+    else{await updateDoc(tr,{done:cur,draft:cur,start});S.notice='✅ Avance enviado'}
+    S.openId=null;render();
+  }catch(e){S.err='Error al enviar: '+e.message;render()}
+}
+
+// ---------- Notas ----------
+const seenK=t=>'seen_'+S.prof.cid+'_'+t.id;
+const getSeen=t=>{try{return +localStorage.getItem(seenK(t))||0}catch(e){return 0}};
+function nbtn(t){
+  const n=S.notes.filter(x=>x.tid===t.id),un=n.some(x=>x.from!==S.u.uid&&x.ts>getSeen(t));
+  const b=el('button','btn sm g','💬 Notas'+(n.length?' ('+n.length+')':'')+(un?' 🔴':''));
+  b.onclick=()=>notesModal(t);return b;
+}
+function notesModal(t){
+  const box=el('div'),list=el('div','nl'),ta=el('textarea'),er=el('p','er'),sb=el('button','btn','Enviar nota');
+  ta.rows=3;ta.placeholder='Escribe una nota…';ta.style.marginBottom='8px';
+  noteView=()=>{
+    if(!document.body.contains(box)){noteView=null;return}
+    list.textContent='';
+    const n=S.notes.filter(x=>x.tid===t.id).sort((a,b)=>a.ts-b.ts);
+    if(!n.length)list.append(el('p','mu','Aún no hay notas.'));
+    n.forEach(x=>{
+      const mine=x.from===S.u.uid,d=el('div','nt2'+(mine?' me':''));
+      d.append(el('div','mu',(mine?'Tú':x.fromName)+' • '+new Date(x.ts).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})),el('div','',x.text));
+      if(mine||S.prof.role==='super'){const rm=el('button','xb','🗑️');rm.onclick=()=>deleteDoc(dref('notes',x.id)).catch(e=>{er.textContent=e.message});d.append(rm)}
+      list.append(d);
+    });
+    try{localStorage.setItem(seenK(t),String(Date.now()))}catch(e){}
+    list.scrollTop=list.scrollHeight;
+  };
+  sb.onclick=async()=>{
+    const text=ta.value.trim();if(!text)return;er.textContent='';
+    try{
+      await addDoc(cref('notes'),{tid:t.id,tname:t.colonia+' #'+t.number,captainId:S.prof.role==='super'?(t.captainId||''):S.u.uid,from:S.u.uid,fromName:capName(S.u.uid)||S.u.displayName||'Usuario',text,ts:Date.now()});
+      ta.value='';
+    }catch(e){er.textContent='No se pudo enviar: '+e.message}
+  };
+  box.append(list,ta,er,sb);
+  if(S.prof.role==='super'&&!t.captainId)box.append(el('p','mu','Este territorio no tiene capitán asignado: solo tú verás las notas.'));
+  modal('Notas · '+t.colonia+' #'+t.number,box,[['Cerrar',()=>{noteView=null;render()},'g']]);
+  noteView();
+}
+
+const trash=(msg,fn)=>{const b=el('button','btn sm rd','🗑️');b.style.width='44px';b.onclick=()=>modal('¿Eliminar del historial?',el('p','mu',msg),[['Cancelar',null,'g'],['Eliminar',fn,'rd']]);return b};
 const sd=d=>d?d.split('-').reverse().join('/'):'—';
 function histForm(){
   const c=el('div'),a=field('Desde (opcional)','date'),b=field('Hasta (opcional)','date'),er=el('p','er');
@@ -310,11 +361,11 @@ function viewC(ct){
   const dl=el('button','btn','📄 Descargar historial');dl.onclick=histForm;ct.append(dl);
   const ids=vis().map(t=>t.id),l=S.cyc.filter(c=>isSup()||ids.includes(c.tid)).sort((a,b)=>b.end.localeCompare(a.end));
   if(!l.length)return ct.append(el('div','em','Aún no hay ciclos completados.'));
-  l.forEach(c=>{const d=el('div','cd');d.append(el('div','t',c.tname),el('p','mu','📅 Inicio: '+(c.start?fmt(c.start):'—')),el('p','mu','🏁 Término: '+fmt(c.end)));ct.append(d)});
+  l.forEach(c=>{const d=el('div','cd'),tp=el('div','top');tp.append(el('div','t',c.tname),trash(c.tname+' ('+fmt(c.end)+')',()=>deleteDoc(dref('cycles',c.id))));d.append(tp,el('p','mu','📅 Inicio: '+(c.start?fmt(c.start):'—')),el('p','mu','🏁 Término: '+fmt(c.end)));ct.append(d)});
 }
 function viewD(ct){
   const ids=vis().map(t=>t.id),l=S.logs.filter(g=>isSup()||ids.includes(g.tid)).sort((a,b)=>b.date.localeCompare(a.date));
   if(!l.length)return ct.append(el('div','em','Aún no hay manzanas trabajadas.'));
-  l.forEach(g=>{const d=el('div','cd');d.append(el('div','mu',fmt(g.date)),el('div','t',g.tname),el('p','mu','📍 Manzanas: '+g.blocks.join(', ')));ct.append(d)});
+  l.forEach(g=>{const d=el('div','cd'),tp=el('div','top'),lb=el('div');lb.append(el('div','mu',fmt(g.date)),el('div','t',g.tname));tp.append(lb,trash(g.tname+' ('+fmt(g.date)+')',()=>deleteDoc(dref('logs',g.id))));d.append(tp,el('p','mu','📍 Manzanas: '+g.blocks.join(', ')));ct.append(d)});
 }
 </script></body></html>
