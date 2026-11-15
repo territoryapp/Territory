@@ -34,7 +34,6 @@ input,select,textarea{display:block;width:100%;margin-top:4px;padding:10px;borde
 .bg.ok{background:#16a34a;color:#fff}.rs{border:1px solid var(--bd);background:var(--bg);color:var(--tx);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600}
 .nl{max-height:40vh;overflow:auto;margin-bottom:10px}.nt2{background:var(--bg);border-radius:10px;padding:8px 28px 8px 10px;margin-bottom:8px;font-size:13px;position:relative;white-space:pre-wrap}.nt2.me{background:#dbeafe;color:#1e3a8a}.nt2.me .mu{color:#1e40af}.nt2 .xb{position:absolute;top:4px;right:4px;width:24px;height:24px;font-size:11px}
 </style></head><body><div id="app"><p class="em">Cargando…</p></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {getAuth,onAuthStateChanged,signInWithPopup,GoogleAuthProvider,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
@@ -88,7 +87,7 @@ function listen(){
 function modal(title,body,acts){
   const o=el('div','ov'),m=el('div','md'),r=el('div','row');m.append(el('h3','',title),body);
   acts.forEach(([l,f,c])=>{const b=el('button','btn '+(c||''),l);b.onclick=async()=>{if(f&&(await f())===false)return;o.remove()};r.append(b)});
-  m.append(r);o.append(m);document.body.append(o);
+  m.append(r);o.append(m);document.body.append(o);return o;
 }
 
 function render(){
@@ -287,7 +286,7 @@ function viewMap(){
     m.append(el('p','mu',cur.length===t.total?'Marcaste todas las manzanas. Toca Enviar cuando estés listo.':'Tus cambios no se envían al superintendente hasta que toques Enviar.'));
     const sb=el('button','btn','📤 Enviar');sb.onclick=()=>send(t);r.append(sb);
   }else{const c=el('button','btn','Cerrar');c.onclick=()=>{S.openId=null;render()};r.append(c)}
-  m.append(r);o.append(m);document.body.append(o);
+  m.append(r);const nr=el('div','row'),nb=el('button','btn g','📝 Agregar nota');nr.style.marginTop='8px';nb.onclick=()=>notesModal(t);nr.append(nb);m.append(nr);o.append(m);document.body.append(o);
 }
 
 async function toggle(t,i){
@@ -348,28 +347,51 @@ function notesModal(t){
   };
   box.append(list,ta,er,sb);
   if(S.prof.role==='super'&&!t.captainId)box.append(el('p','mu','Este territorio no tiene capitán asignado: solo tú verás las notas.'));
-  modal('Notas · '+t.colonia+' #'+t.number,box,[['Cerrar',()=>{noteView=null;render()},'g']]);
+  const ov=modal('Notas · '+t.colonia+' #'+t.number,box,[['Cerrar',()=>{noteView=null;render()},'g']]);ov.style.zIndex='20';
   noteView();
 }
 
 const trash=(msg,fn)=>{const b=el('button','btn sm rd','🗑️');b.style.width='44px';b.onclick=()=>modal('¿Eliminar del historial?',el('p','mu',msg),[['Cancelar',null,'g'],['Eliminar',fn,'rd']]);return b};
 const sd=d=>d?d.split('-').reverse().join('/'):'—';
+const esc=t=>String(t).replace(/[^\x20-\xFF]/g,'?').replace(/([\\()])/g,'\\$1');
+function makePdf(pages){
+  const objs=[],add=o=>{objs.push(o);return objs.length};
+  add('<< /Type /Catalog /Pages 2 0 R >>');add('');
+  add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const kids=[];
+  pages.forEach(p=>{
+    const c=add('<< /Length '+p.length+' >>\nstream\n'+p+'\nendstream');
+    kids.push(add('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents '+c+' 0 R >>')+' 0 R');
+  });
+  objs[1]='<< /Type /Pages /Kids ['+kids.join(' ')+'] /Count '+kids.length+' >>';
+  let out='%PDF-1.4\n';const off=[];
+  objs.forEach((o,i)=>{off.push(out.length);out+=(i+1)+' 0 obj\n'+o+'\nendobj\n'});
+  const x=out.length;
+  out+='xref\n0 '+(objs.length+1)+'\n0000000000 65535 f \n'+off.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size '+(objs.length+1)+' /Root 1 0 R >>\nstartxref\n'+x+'\n%%EOF';
+  const u=new Uint8Array(out.length);for(let i=0;i<out.length;i++)u[i]=out.charCodeAt(i)&255;
+  return new Blob([u],{type:'application/pdf'});
+}
+function histPdf(title,sub,rows){
+  const pages=[];let ops='',y=790;
+  const T=(f,sz,x,yy,t)=>'BT /'+f+' '+sz+' Tf '+x+' '+yy+' Td ('+esc(t)+') Tj ET\n';
+  const head=()=>{ops+=T('F2',11,40,y,'Territorio')+T('F2',11,330,y,'Inicio')+T('F2',11,450,y,'Término')+'40 '+(y-6)+' m 555 '+(y-6)+' l S\n';y-=24};
+  ops+=T('F2',18,40,y,title);y-=20;ops+=T('F1',10,40,y,sub);y-=32;head();
+  rows.forEach(r=>{if(y<50){pages.push(ops);ops='';y=790;head()}ops+=T('F1',11,40,y,r[0])+T('F1',11,330,y,r[1])+T('F1',11,450,y,r[2]);y-=20});
+  pages.push(ops);return makePdf(pages);
+}
 function histForm(){
   const c=el('div'),a=field('Desde (opcional)','date'),b=field('Hasta (opcional)','date'),er=el('p','er');
   c.append(el('p','mu','Elige el periodo del historial. Si dejas las fechas vacías, se incluye todo.'),el('br'),a,b,er);
   modal('Descargar historial',c,[['Cancelar',null,'g'],['Descargar PDF',()=>{
     const from=a.i.value,to=b.i.value;
     if(from&&to&&from>to){er.textContent='La fecha inicial es posterior a la final.';return false}
-    if(!window.jspdf){er.textContent='No se pudo cargar el generador de PDF. Revisa tu conexión.';return false}
     const l=S.cyc.filter(x=>(!from||x.end>=from)&&(!to||(x.start||x.end)<=to)).sort((x,y)=>(x.start||x.end).localeCompare(y.start||y.end)||x.end.localeCompare(y.end));
     if(!l.length){er.textContent='No hay ciclos en esas fechas.';return false}
-    const doc=new window.jspdf.jsPDF();let y=20;
-    doc.setFontSize(16);doc.text('Historial de territorios',14,y);y+=8;
-    doc.setFontSize(10);doc.text((S.cong?S.cong.name:'')+'  -  '+(from||to?'Del '+sd(from)+' al '+sd(to):'Todo el historial'),14,y);y+=10;
-    const head=()=>{doc.setFont(undefined,'bold');doc.text('Territorio',14,y);doc.text('Inicio',115,y);doc.text('Término',160,y);doc.line(14,y+2,196,y+2);doc.setFont(undefined,'normal');y+=9};
-    head();
-    l.forEach(x=>{if(y>280){doc.addPage();y=20;head()}doc.text(String(x.tname),14,y);doc.text(sd(x.start),115,y);doc.text(sd(x.end),160,y);y+=8});
-    doc.save('historial-territorios.pdf');
+    const sub=(S.cong?S.cong.name:'')+'  -  '+(from||to?'Del '+sd(from)+' al '+sd(to):'Todo el historial');
+    const blob=histPdf('Historial de territorios',sub,l.map(x=>[x.tname,sd(x.start),sd(x.end)]));
+    const u=URL.createObjectURL(blob),k=document.createElement('a');
+    k.href=u;k.download='historial-territorios.pdf';document.body.append(k);k.click();k.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);
   }]]);
 }
 
