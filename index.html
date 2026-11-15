@@ -30,6 +30,7 @@ input,select,textarea{display:block;width:100%;margin-top:4px;padding:10px;borde
 .nt{background:#dbeafe;color:#1e3a8a;padding:12px 16px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;gap:8px;align-items:center}.nt button{border:0;background:none;font-weight:700;color:inherit}
 .em{text-align:center;color:var(--mu);padding:30px 10px;font-size:13px}.c{text-align:center}.c h2{margin:8px 0}
 .xb{border:0;background:var(--bg);color:var(--tx);width:32px;height:32px;border-radius:16px;font-size:14px;flex:none}
+.bg.ok{background:#16a34a;color:#fff}.rs{border:1px solid var(--bd);background:var(--bg);color:var(--tx);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600}
 .nl{max-height:40vh;overflow:auto;margin-bottom:10px}.nt2{background:var(--bg);border-radius:10px;padding:8px 28px 8px 10px;margin-bottom:8px;font-size:13px;position:relative;white-space:pre-wrap}.nt2.me{background:#dbeafe;color:#1e3a8a}.nt2.me .mu{color:#1e40af}.nt2 .xb{position:absolute;top:4px;right:4px;width:24px;height:24px;font-size:11px}
 </style></head><body><div id="app"><p class="em">Cargando…</p></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
@@ -189,6 +190,16 @@ function viewT(ct){
     const c=el('div','cd'),top=el('div','top'),l=el('div');
     l.append(el('div','t',t.colonia+' #'+t.number),el('div','mu',(t.captainId?'Capitán: '+(capName(t.captainId)||'—'):'Sin asignar')+' • '+t.total+' manzanas'));
     top.append(l,el('span','bg'+(t.captainId?' as':''),t.captainId?'Asignado':'Disponible'));c.append(top);
+    if(t.completed){
+      const cr=el('div','top');cr.style.cssText='justify-content:flex-end;align-items:center;margin-top:8px';
+      cr.append(el('span','bg ok','✅ Completado'));
+      if(isSup()){
+        const rs=el('button','rs','↻ Reiniciar');
+        rs.onclick=()=>modal('¿Estás seguro de que quieres reiniciar este territorio?',el('p','mu','Quedará disponible otra vez, sin capitán y sin manzanas marcadas. El historial de ciclos no se borra.'),[['Cancelar',null,'g'],['Sí, reiniciar',()=>updateDoc(dref('territories',t.id),{completed:false,done:[],draft:[],start:'',captainId:''}),'rd']]);
+        cr.append(rs);
+      }
+      c.append(cr);
+    }
     if(t.img){const i=el('img','im');i.src=t.img;i.alt='Mapa';c.append(i)}else c.append(el('div','ph','Sin mapa'));
     const pc=isSup()?(t.done||[]):curOf(t);c.append(el('p','mu','Avance: '+pc.length+' / '+t.total+' manzanas'+(!isSup()&&!same(pc,t.done||[])?' (sin enviar)':'')));
     const r=el('div','row'),v=el('button','btn sm','👁️ Ver mapa');v.onclick=()=>{S.openId=t.id;render()};r.append(v,nbtn(t));
@@ -262,11 +273,11 @@ const same=(a,b)=>a.length===b.length&&a.every((x,i)=>x===b[i]);
 
 function viewMap(){
   const t=S.terr.find(x=>x.id===S.openId);if(!t){S.openId=null;return}
-  const o=el('div','ov'),m=el('div','md'),can=isSup()||t.captainId===S.u.uid,cur=curOf(t),dirty=!same(cur,t.done||[]);o.id='mm';
+  const o=el('div','ov'),m=el('div','md'),can=(isSup()||t.captainId===S.u.uid)&&!t.completed,cur=curOf(t),dirty=!same(cur,t.done||[]);o.id='mm';
   const hh=el('div','top'),x=el('button','xb','✕');x.onclick=()=>{S.openId=null;render()};
   hh.append(el('h3','',t.colonia+' #'+t.number),x);m.append(hh);
   if(t.img){const i=el('img','im');i.src=t.img;i.alt='Mapa';m.append(i)}
-  m.append(el('p','mu',can?'Toca una manzana para marcar o desmarcar:':'Solo el capitán asignado puede marcar manzanas.'));
+  m.append(el('p','mu',can?'Toca una manzana para marcar o desmarcar:':(t.completed?'Este territorio está completado.':'Solo el capitán asignado puede marcar manzanas.')));
   const g=el('div','gr');
   for(let i=1;i<=t.total;i++){const b=el('button',cur.includes(i)?'dn':'',i);b.onclick=()=>toggle(t,i);g.append(b)}
   m.append(g);
@@ -279,22 +290,26 @@ function viewMap(){
 }
 
 async function toggle(t,i){
-  if(!(isSup()||t.captainId===S.u.uid))return;
+  if(t.completed||!(isSup()||t.captainId===S.u.uid))return;
   const cur=curOf(t),nd=cur.includes(i)?cur.filter(x=>x!==i):[...cur,i].sort((a,b)=>a-b);
   try{await updateDoc(dref('territories',t.id),{draft:nd})}catch(e){S.err='Error al guardar: '+e.message;render()}
 }
 
 async function send(t){
-  if(!(isSup()||t.captainId===S.u.uid))return;
+  if(t.completed||!(isSup()||t.captainId===S.u.uid))return;
   const d=today(),cur=curOf(t),done=t.done||[],add=cur.filter(x=>!done.includes(x)),rem=done.filter(x=>!cur.includes(x)),name=t.colonia+' #'+t.number,lr=dref('logs',d+'_'+t.id),tr=dref('territories',t.id);
   try{
     const s=await getDoc(lr),lg=s.exists()?s.data():{date:d,tid:t.id,tname:name,blocks:[]};
     const bl=[...new Set([...lg.blocks.filter(x=>!rem.includes(x)),...add])].sort((a,b)=>a-b);
     if(bl.length)await setDoc(lr,{...lg,blocks:bl});else if(s.exists())await deleteDoc(lr);
     const start=cur.length?(t.start||d):'';
-    if(cur.length===t.total){await addDoc(cref('cycles'),{tid:t.id,tname:name,start,end:d});await updateDoc(tr,{done:[],draft:[],start:''});S.notice='✅ Territorio completado y enviado'}
-    else{await updateDoc(tr,{done:cur,draft:cur,start});S.notice='✅ Avance enviado'}
-    S.openId=null;render();
+    if(cur.length===t.total){await addDoc(cref('cycles'),{tid:t.id,tname:name,start,end:d});await updateDoc(tr,{done:cur,draft:cur,start,completed:true})}
+    else{await updateDoc(tr,{done:cur,draft:cur,start})}
+    S.openId=null;
+    const full=cur.length===t.total;
+    if(isSup())S.notice=full?'✅ Territorio completado y enviado':'✅ Avance enviado';
+    render();
+    if(!isSup())modal(full?'🎉 Felicidades':'✅ Enviado',el('p','mu',full?'Completaste todo el territorio.':'Tu avance se envió al superintendente.'),[['Aceptar',null]]);
   }catch(e){S.err='Error al enviar: '+e.message;render()}
 }
 
