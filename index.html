@@ -9,7 +9,7 @@
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 body{background:var(--bg);color:var(--tx);padding:12px;display:flex;justify-content:center}
 #app{width:100%;max-width:480px;background:var(--cd);border:1px solid var(--bd);border-radius:16px;overflow:hidden;min-height:300px}
-.hd{background:var(--hd);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px}.hd h1{font-size:17px}.hd small{font-size:12px;color:#c7d2fe}.hd .rb{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.hd button{background:none;border:0;color:#c7d2fe;font-size:12px;text-decoration:underline}
+.hd{background:var(--hd);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px}.hd h1{font-size:17px}.hd small{font-size:12px;color:#c7d2fe}.hd .gear{font-size:22px;text-decoration:none;padding:4px}.hd .rb{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.hd button{background:none;border:0;color:#c7d2fe;font-size:12px;text-decoration:underline}
 .tabs{display:flex;gap:4px;padding:4px;border-bottom:1px solid var(--bd)}
 .tabs button{flex:1;padding:10px 4px;border:0;border-radius:8px;background:none;color:var(--mu);font-weight:600;font-size:12px}.tabs .on{background:var(--bg);color:var(--pr)}
 .ct{padding:16px}
@@ -56,7 +56,7 @@ const P=new URLSearchParams(location.search),invC=P.get('c'),invK=P.get('k');
 
 if(!CONFIG.apiKey){$('#app').innerHTML='<p class="em">Falta pegar la configuración de Firebase en el archivo (busca CONFIG).</p>'}
 const app=CONFIG.apiKey?initializeApp(CONFIG):null,auth=app&&getAuth(app),db=app&&getFirestore(app);
-let S={u:null,ready:false,prof:null,step:'',mode:'new',cong:null,mems:[],terr:[],cyc:[],logs:[],sch:[],notes:[],notice:'',cap:false,switching:false,tab:'t',openId:null,err:''},ls=false;
+let S={u:null,ready:false,prof:null,step:'',mode:'new',cong:null,mems:[],terr:[],cyc:[],logs:[],sch:[],notes:[],notice:'',cap:false,switching:false,info:'',tab:'t',openId:null,err:''},ls=false;
 const isSup=()=>S.prof&&S.prof.role==='super'&&!S.cap;
 const cid=()=>S.prof.cid;
 const dref=(...p)=>doc(db,'congregations',cid(),...p);
@@ -67,7 +67,13 @@ const vis=()=>isSup()?S.terr:S.terr.filter(t=>t.captainId===S.u.uid);
 
 if(auth)onAuthStateChanged(auth,async u=>{
   unlisten();S.u=u;S.ready=true;S.prof=null;
-  if(u){try{const p=await getDoc(doc(db,'users',u.uid));S.prof=p.exists()?p.data():null;if(S.prof)listen()}catch(e){S.err=e.message}}
+  if(u){try{const p=await getDoc(doc(db,'users',u.uid));S.prof=p.exists()?p.data():null;
+    if(S.prof){
+      let ok=true;
+      try{const m=await getDoc(doc(db,'congregations',S.prof.cid,'members',u.uid));ok=m.exists()}catch(e){ok=e.code!=='permission-denied'}
+      if(!ok){try{await deleteDoc(doc(db,'users',u.uid))}catch(e){}S.prof=null;S.info='La congregación ya no existe o ya no formas parte de ella.'}
+      else listen();
+    }}catch(e){S.err=e.message}}
   render();
 });
 
@@ -75,7 +81,7 @@ let unsubs=[],iv,noteView=null;
 function unlisten(){unsubs.forEach(f=>f());unsubs=[];clearInterval(iv);ls=false;S.cong=null;S.mems=[];S.terr=[];S.cyc=[];S.logs=[];S.sch=[];S.notes=[];S.err='';S.openId=null;S.tab='t';S.step='';S.cap=false;S.switching=false}
 function listen(){
   if(ls)return;ls=true;
-  const e=x=>{if(!S.u)return;S.err=x.message;render()};
+  const e=x=>{if(!S.u)return;if(x.code==='permission-denied'){gone().then(g=>{if(!g){S.err=x.message;render()}});return}S.err=x.message;render()};
   unsubs.push(onSnapshot(dref(),s=>{S.cong=s.data();render()},e));
   const sub=(n,k)=>unsubs.push(onSnapshot(cref(n),s=>{S[k]=s.docs.map(d=>({id:d.id,...d.data()}));render()},e));
   sub('members','mems');sub('territories','terr');sub('cycles','cyc');sub('logs','logs');
@@ -97,15 +103,7 @@ function render(){
   if(!S.prof||S.switching)return onboard(A);
   const hd=el('div','hd'),l=el('div');
   l.append(el('h1','','🗺️ '+(S.cong?S.cong.name:'Territorios')),el('small','',isSup()?'Superintendente':'Capitán: '+(capName(S.u.uid)||'')));
-  const out=el('button','','Salir');out.onclick=async()=>{unlisten();await signOut(auth)};
-  const sw=el('button','',S.prof.role==='captain'||S.cap?'Cambiar a Superintendente':'Entrar como Capitán');
-  sw.onclick=()=>{
-    if(S.prof.role==='captain'){S.switching=true;S.step='super';render();return}
-    S.cap=!S.cap;S.tab='t';
-    if(S.cap)updateDoc(dref('members',S.u.uid),{alsoCaptain:true}).catch(()=>{});
-    render();
-  };
-  const rb=el('div','rb');rb.append(sw,out);hd.append(l,rb);A.append(hd);
+  const gear=el('button','gear','⚙️');gear.onclick=menu;hd.append(l,gear);A.append(hd);
   if(S.err)A.append(el('p','er',S.err));
   if(S.notice){const n=el('div','nt'),x=el('button','','Entendido');n.append(el('span','',S.notice),x);x.onclick=()=>{S.notice='';render()};A.append(n)}
   const tabs=el('div','tabs');
@@ -113,6 +111,77 @@ function render(){
   const ct=el('div','ct');if(isSup())A.append(tabs);A.append(ct);
   if(S.tab==='t'||!isSup())viewT(ct);else if(S.tab==='c')viewC(ct);else viewD(ct);
   $('#mm')&&$('#mm').remove();if(S.openId)viewMap();
+}
+
+// ---------- Configuración (⚙️) ----------
+const warn=t=>{const p=el('p','mu',t);p.style.whiteSpace='pre-line';p.style.lineHeight='1.5';return p};
+async function gone(){
+  try{const m=await getDoc(dref('members',S.u.uid));if(m.exists())return false}catch(e){if(e.code!=='permission-denied')return false}
+  unlisten();try{await deleteDoc(doc(db,'users',S.u.uid))}catch(e){}
+  S.prof=null;S.step='';S.info='La congregación ya no existe o ya no formas parte de ella.';render();return true;
+}
+function menu(){
+  const box=el('div'),asCap=S.prof.role==='captain'||S.cap,isS=S.prof.role==='super';let ov;
+  const opt=(label,fn,cls)=>{const b=el('button','btn '+(cls||'g'),label);b.onclick=()=>{ov.remove();fn()};box.append(b)};
+  opt('🚪 Salir de esta congregación',leave);
+  if(!asCap){
+    opt('🗑️ Eliminar congregación',delCong,'rd');
+    opt('📱 Entrar como capitán',()=>{S.cap=true;S.tab='t';updateDoc(dref('members',S.u.uid),{alsoCaptain:true}).catch(()=>{});render()});
+  }else{
+    opt('👔 Entrar como superintendente',()=>{if(isS){S.cap=false;S.tab='t';render()}else upgrade()});
+  }
+  opt('🔒 Cerrar sesión',async()=>{unlisten();await signOut(auth)});
+  ov=modal('Configuración',box,[['Cerrar',null,'g']]);
+}
+function leave(){
+  const isS=S.prof.role==='super';
+  if(isS&&S.mems.filter(m=>m.role==='super').length<=1){
+    modal('No puedes salir todavía',warn('Eres el único superintendente de esta congregación.\n\nAntes de salir, otro superintendente debe entrar con el nombre y la contraseña de la congregación. También puedes eliminarla desde ⚙️.'),[['Entendido',null]]);return;
+  }
+  const txt=isS
+    ?'Si sales de esta congregación:\n• Dejarás de ser superintendente de ella.\n• Los territorios, el historial y los capitanes se quedan en la congregación.\n• Los territorios que tengas asignados como capitán quedarán Disponibles.\n• Para volver necesitarás el nombre y la contraseña de la congregación.'
+    :'Si sales de esta congregación:\n• Dejarás de aparecer como capitán.\n• Los territorios que tienes asignados quedarán Disponibles y se borrará su avance.\n• El historial de ciclos no se borra.\n• Para volver necesitarás otra vez el enlace de invitación (o el nombre y la contraseña si eres superintendente).';
+  modal('¿Salir de esta congregación?',warn(txt),[['Cancelar',null,'g'],['Sí, salir',async()=>{
+    const uid=S.u.uid,c=cid(),mine=S.terr.filter(t=>t.captainId===uid).map(t=>t.id);
+    try{
+      for(const id of mine)await updateDoc(dref('territories',id),{captainId:'',done:[],draft:[],start:'',completed:false});
+      unlisten();
+      await deleteDoc(doc(db,'congregations',c,'members',uid));
+      await deleteDoc(doc(db,'users',uid));
+      S.prof=null;S.step=isS?'super':'';S.mode='new';S.info='';render();
+    }catch(e){S.err='No se pudo salir: '+e.message;listen();render()}
+  },'rd']]);
+}
+function delCong(){
+  const box=el('div'),p=field('Contraseña de la congregación','password'),er=el('p','er');
+  box.append(warn('Se borrarán para todos: los territorios, el historial de ciclos, los días trabajados, las notas y la lista de miembros. Esta acción no se puede deshacer.\n\nSi estás seguro, escribe la contraseña de la congregación.'),el('br'),p,er);
+  modal('¿Eliminar congregación?',box,[['Cancelar',null,'g'],['Eliminar',async()=>{
+    const h=await sha(cid()+':'+p.i.value);
+    if(!S.cong||h!==S.cong.pwHash){er.textContent='Contraseña incorrecta.';return false}
+    const uid=S.u.uid,c=cid();
+    const refs=[...S.terr.map(x=>dref('territories',x.id)),...S.logs.map(x=>dref('logs',x.id)),...S.cyc.map(x=>dref('cycles',x.id)),...S.sch.map(x=>dref('schedules',x.id)),...S.notes.map(x=>dref('notes',x.id)),...S.mems.filter(m=>m.id!==uid).map(m=>dref('members',m.id))];
+    try{
+      unlisten();
+      for(let i=0;i<refs.length;i+=8)await Promise.all(refs.slice(i,i+8).map(r=>deleteDoc(r)));
+      await deleteDoc(doc(db,'congregations',c));
+      await deleteDoc(doc(db,'congregations',c,'members',uid));
+      await deleteDoc(doc(db,'users',uid));
+      S.prof=null;S.step='super';S.mode='new';S.info='La congregación se eliminó.';render();
+    }catch(e){er.textContent='No se pudo eliminar: '+e.message;listen();return false}
+  },'rd']]);
+}
+function upgrade(){
+  const box=el('div'),n=field('Nombre de la congregación','text'),p=field('Contraseña','password'),er=el('p','er');
+  box.append(el('p','mu','Escribe el nombre y la contraseña de esta congregación. Solo se pide la primera vez.'),el('br'),n,p,er);
+  modal('Entrar como superintendente',box,[['Cancelar',null,'g'],['Entrar',async()=>{
+    if(slug(n.i.value.trim())!==cid()){er.textContent='Ese no es el nombre de tu congregación.';return false}
+    const hash=await sha(cid()+':'+p.i.value);
+    try{
+      await updateDoc(dref('members',S.u.uid),{role:'super',pw:hash,alsoCaptain:true});
+      await setDoc(doc(db,'users',S.u.uid),{cid:cid(),role:'super'});
+      S.prof={...S.prof,role:'super'};S.cap=false;S.tab='t';unlisten();listen();render();
+    }catch(e){er.textContent='Nombre o contraseña incorrectos.';return false}
+  }]]);
 }
 
 // ---------- Registro / entrada ----------
@@ -129,7 +198,8 @@ function authView(A){
 
 function onboard(A){
   const c=el('div','ct'),er=el('p','er');A.append(c);
-  const done=async(role)=>{await setDoc(doc(db,'users',S.u.uid),{cid:S.cid,role});unlisten();S.prof={cid:S.cid,role};listen();render()};
+  if(S.info){const n=el('div','nt',S.info);n.style.borderRadius='10px';n.style.marginBottom='12px';c.append(n)}
+  const done=async(role)=>{await setDoc(doc(db,'users',S.u.uid),{cid:S.cid,role});unlisten();S.info='';S.prof={cid:S.cid,role};listen();render()};
   const nm=S.u.displayName||S.u.email||'Sin nombre';
   if(invC&&invK&&!S.step)S.step='captain';
   if(!S.step){
